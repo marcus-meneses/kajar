@@ -483,16 +483,21 @@ export interface FiscalFrame {
   id: string;
   numericId: string | number;
   version: string;
+  policySetId: string;
   originCode: string;
   jurisdiction: "Country" | "State" | "City";
   countryId: string;
   stateId: string | null;
   cityId: string | null;
   itemType: "Product" | "Service";
+  operation: "Sale" | "Service";
+  priority: number;
+  buyerType: "Consumer" | "Taxpayer" | "Government" | null;
   enterpriseSize: string | null;
   enterpriseType: string | null;
   taxRegime: string | null;
   fiscalNCMId: string | null;
+  fiscalNBSId: string | null;
   fiscalCESTId: string | null;
   cstIcms: string | null;
   fiscalCFOPId: string | null;
@@ -520,40 +525,37 @@ export interface FiscalFrameTax {
   phase: "Normal" | "Test" | "Transition" | "Final" | null;
 }
 
-export interface FiscalException {
-  id: string;
-  numericId: string | number;
-  frameTaxId: string;
-  overrideField: string;
-  overrideValue: number | null;
-  priority: number;
-  overrideLegalBasis: string;
-  dateStart: string;
-  dateEnd: string | null;
-  dateTime: string;
-}
-
 export interface TaxRule {
   id: string;
   numericId: string | number;
   name: string;
   description: string | null;
-  taxCalcMethod: "Percentage" | "Fixed" | "Formula";
+  taxCalcMethod: "Percentage" | "FixedPerItem" | "ReducedBase" | "Exempt" | "NotApplicable";
   taxCalcParameters: Record<string, unknown>;
   dateStart: string;
   dateEnd: string | null;
   dateTime: string;
 }
 
+export interface FiscalPolicySet {
+  id: string;
+  numericId: string | number;
+  code: string;
+  name: string;
+  version: number;
+  status: "Draft" | "Published" | "Retired";
+  description: string | null;
+  dateStart: string;
+  dateEnd: string | null;
+  dateTime: string;
+}
+export type FiscalPolicySetInput = Omit<FiscalPolicySet, "id" | "numericId" | "dateTime"> & { dateTime?: string };
+
 export type FiscalFrameInput = Omit<
   FiscalFrame,
   "id" | "numericId" | "dateTime"
 > & { dateTime?: string };
 export type FiscalFrameTaxInput = Omit<FiscalFrameTax, "id" | "numericId">;
-export type FiscalExceptionInput = Omit<
-  FiscalException,
-  "id" | "numericId" | "dateTime"
-> & { dateTime?: string };
 export type TaxRuleInput = Omit<TaxRule, "id" | "numericId" | "dateTime"> & {
   dateTime?: string;
 };

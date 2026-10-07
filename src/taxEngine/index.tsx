@@ -7,9 +7,9 @@ import {
   sortByNumericId,
 } from "../shared";
 import {
-  ExceptionForm,
   FrameForm,
   FrameTaxForm,
+  PolicySetForm,
   RuleForm,
   TaxEngineSummary,
   TaxEngineTabs,
@@ -27,17 +27,17 @@ import type {
   FiscalCEST,
   FiscalCFOP,
   FiscalClassTrib,
-  FiscalException,
-  FiscalExceptionInput,
   FiscalFrame,
   FiscalFrameInput,
   FiscalFrameTax,
   FiscalFrameTaxInput,
+  FiscalPolicySet,
+  FiscalPolicySetInput,
   TaxRule,
   TaxRuleInput,
 } from "../shared";
 
-type TaxEngineTab = "rules" | "frames" | "frameTaxes" | "exceptions";
+type TaxEngineTab = "policies" | "rules" | "frames" | "frameTaxes";
 type RequestErrorHandler = (
   title: string,
   error: unknown,
@@ -63,7 +63,7 @@ type DictionaryPickerState = {
 } | null;
 
 const tabs: TaxEngineTabConfig[] = [
-  { key: "rules", title: "Tax rules", listTitle: "Tax rules", metric: "Rules" },
+  { key: "policies", title: "Policy sets", listTitle: "Fiscal policy sets", metric: "Policies" },
   {
     key: "frames",
     title: "Fiscal frames",
@@ -76,12 +76,7 @@ const tabs: TaxEngineTabConfig[] = [
     listTitle: "Fiscal frame taxes",
     metric: "Frame taxes",
   },
-  {
-    key: "exceptions",
-    title: "Exceptions",
-    listTitle: "Fiscal exceptions",
-    metric: "Exceptions",
-  },
+  { key: "rules", title: "Tax rules", listTitle: "Tax rules", metric: "Rules" },
 ];
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -96,11 +91,24 @@ const blankRule = (): TaxRuleInput => ({
   name: "",
   description: null,
   taxCalcMethod: "Percentage",
-  taxCalcParameters: {},
+  taxCalcParameters: { rate: 0 },
+  dateStart: today(),
+  dateEnd: null,
+});
+const blankPolicy = (): FiscalPolicySetInput => ({
+  code: "",
+  name: "",
+  version: 1,
+  status: "Draft",
+  description: null,
   dateStart: today(),
   dateEnd: null,
 });
 const blankFrame = (): FiscalFrameInput => ({
+  policySetId: "",
+  operation: "Sale",
+  priority: 0,
+  buyerType: null,
   version: "1",
   originCode: "0",
   jurisdiction: "Country",
@@ -112,6 +120,7 @@ const blankFrame = (): FiscalFrameInput => ({
   enterpriseType: null,
   taxRegime: null,
   fiscalNCMId: null,
+  fiscalNBSId: null,
   fiscalCESTId: null,
   cstIcms: null,
   fiscalCFOPId: null,
@@ -134,16 +143,6 @@ const blankFrameTax = (): FiscalFrameTaxInput => ({
   affectsPayment: false,
   phase: null,
 });
-const blankException = (): FiscalExceptionInput => ({
-  frameTaxId: "",
-  overrideField: "",
-  overrideValue: null,
-  priority: 0,
-  overrideLegalBasis: "",
-  dateStart: today(),
-  dateEnd: null,
-});
-
 export function TaxEngineEditor({
   api,
   onRequestError,
@@ -151,28 +150,26 @@ export function TaxEngineEditor({
   api: ApiClient;
   onRequestError: RequestErrorHandler;
 }) {
-  const [tab, setTab] = useState<TaxEngineTab>("rules");
+  const [tab, setTab] = useState<TaxEngineTab>("policies");
+  const [policies, setPolicies] = useState<FiscalPolicySet[]>([]);
   const [rules, setRules] = useState<TaxRule[]>([]);
   const [frames, setFrames] = useState<FiscalFrame[]>([]);
   const [frameTaxes, setFrameTaxes] = useState<FiscalFrameTax[]>([]);
-  const [exceptions, setExceptions] = useState<FiscalException[]>([]);
   const [dictionaries, setDictionaries] = useState<DictionaryCollection>({});
   const [selected, setSelected] = useState<Record<TaxEngineTab, string | null>>(
-    { rules: null, frames: null, frameTaxes: null, exceptions: null },
+    { policies: null, rules: null, frames: null, frameTaxes: null },
   );
   const [search, setSearch] = useState<Record<TaxEngineTab, string>>({
+    policies: "",
     rules: "",
     frames: "",
     frameTaxes: "",
-    exceptions: "",
   });
+  const [policyDraft, setPolicyDraft] = useState<FiscalPolicySetInput>(blankPolicy);
   const [ruleDraft, setRuleDraft] = useState<TaxRuleInput>(blankRule);
-  const [ruleParametersText, setRuleParametersText] = useState("{}");
   const [frameDraft, setFrameDraft] = useState<FiscalFrameInput>(blankFrame);
   const [frameTaxDraft, setFrameTaxDraft] =
     useState<FiscalFrameTaxInput>(blankFrameTax);
-  const [exceptionDraft, setExceptionDraft] =
-    useState<FiscalExceptionInput>(blankException);
   const [status, setStatus] = useState<StatusState>({ kind: "idle", text: "" });
   const [saving, setSaving] = useState(false);
 
@@ -184,10 +181,6 @@ export function TaxEngineEditor({
     () => new Map(frames.map((item) => [item.id, item])),
     [frames],
   );
-  const frameTaxById = useMemo(
-    () => new Map(frameTaxes.map((item) => [item.id, item])),
-    [frameTaxes],
-  );
   const active = tabs.find((item) => item.key === tab)!;
 
   const load = async () => {
@@ -195,22 +188,22 @@ export function TaxEngineEditor({
     try {
       const [
         dictionaryResponse,
+        policyRecords,
         ruleRecords,
         frameRecords,
         frameTaxRecords,
-        exceptionRecords,
       ] = await Promise.all([
         api.listDictionaries(),
+        fetchAllPages((params) => api.listFiscalPolicySets(params)),
         fetchAllPages((params) => api.listTaxRules(params)),
         fetchAllPages((params) => api.listFiscalFrames(params)),
         fetchAllPages((params) => api.listFiscalFrameTaxes(params)),
-        fetchAllPages((params) => api.listFiscalExceptions(params)),
       ]);
       setDictionaries(dictionaryResponse.data);
+      setPolicies(sortByNumericId(policyRecords));
       setRules(sortByNumericId(ruleRecords));
       setFrames(sortFrames(frameRecords));
       setFrameTaxes(sortByNumericId(frameTaxRecords));
-      setExceptions(sortByNumericId(exceptionRecords));
       resetEditors();
       setStatus({ kind: "ok", text: "Loaded tax engine records." });
     } catch (error) {
@@ -229,16 +222,15 @@ export function TaxEngineEditor({
 
   const resetEditors = () => {
     setSelected({
+      policies: null,
       rules: null,
       frames: null,
       frameTaxes: null,
-      exceptions: null,
     });
+    setPolicyDraft(blankPolicy());
     setRuleDraft(blankRule());
-    setRuleParametersText("{}");
     setFrameDraft(blankFrame());
     setFrameTaxDraft(blankFrameTax());
-    setExceptionDraft(blankException());
   };
   const changeTab = (next: TaxEngineTab) => {
     setTab(next);
@@ -255,13 +247,26 @@ export function TaxEngineEditor({
       dateStart: item.dateStart,
       dateEnd: item.dateEnd,
     });
-    setRuleParametersText(
-      JSON.stringify(item.taxCalcParameters ?? {}, null, 2),
-    );
+  };
+  const selectPolicy = (item: FiscalPolicySet) => {
+    setSelected((current) => ({ ...current, policies: item.id }));
+    setPolicyDraft({
+      code: item.code,
+      name: item.name,
+      version: item.version,
+      status: item.status,
+      description: item.description,
+      dateStart: item.dateStart,
+      dateEnd: item.dateEnd,
+    });
   };
   const selectFrame = (item: FiscalFrame) => {
     setSelected((current) => ({ ...current, frames: item.id }));
     setFrameDraft({
+      policySetId: item.policySetId,
+      operation: item.operation,
+      priority: item.priority,
+      buyerType: item.buyerType,
       version: item.version,
       originCode: item.originCode,
       jurisdiction: item.jurisdiction,
@@ -273,6 +278,7 @@ export function TaxEngineEditor({
       enterpriseType: item.enterpriseType,
       taxRegime: item.taxRegime,
       fiscalNCMId: item.fiscalNCMId,
+      fiscalNBSId: item.fiscalNBSId,
       fiscalCESTId: item.fiscalCESTId,
       cstIcms: item.cstIcms,
       fiscalCFOPId: item.fiscalCFOPId,
@@ -299,29 +305,43 @@ export function TaxEngineEditor({
       phase: item.phase,
     });
   };
-  const selectException = (item: FiscalException) => {
-    setSelected((current) => ({ ...current, exceptions: item.id }));
-    setExceptionDraft({
-      frameTaxId: item.frameTaxId,
-      overrideField: item.overrideField,
-      overrideValue: item.overrideValue,
-      priority: item.priority,
-      overrideLegalBasis: item.overrideLegalBasis,
-      dateStart: item.dateStart,
-      dateEnd: item.dateEnd,
-    });
+  const savePolicy = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      const input: FiscalPolicySetInput = {
+        ...policyDraft,
+        code: requiredText(policyDraft.code),
+        name: requiredText(policyDraft.name),
+        version: toNumber(policyDraft.version, 1),
+        description: cleanText(policyDraft.description),
+        dateEnd: cleanText(policyDraft.dateEnd),
+      };
+      const selectedId = selected.policies;
+      const response = selectedId
+        ? await api.updateFiscalPolicySet(selectedId, input)
+        : await api.createFiscalPolicySet(input);
+      setPolicies(sortByNumericId(selectedId
+        ? policies.map((item) => item.id === selectedId ? response.data : item)
+        : [...policies, response.data]));
+      selectPolicy(response.data);
+      setStatus({ kind: "ok", text: selectedId ? "Policy set updated." : "Policy set created." });
+    } catch (error) {
+      onRequestError("Could not save policy set", error, "Could not save policy set.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const saveRule = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSaving(true);
     try {
-      const parameters = JSON.parse(ruleParametersText || "{}");
       const input: TaxRuleInput = {
         name: requiredText(ruleDraft.name),
         description: cleanText(ruleDraft.description),
         taxCalcMethod: ruleDraft.taxCalcMethod,
-        taxCalcParameters: parameters,
+        taxCalcParameters: ruleDraft.taxCalcParameters,
         dateStart: ruleDraft.dateStart,
         dateEnd: cleanText(ruleDraft.dateEnd),
       };
@@ -425,55 +445,6 @@ export function TaxEngineEditor({
       setSaving(false);
     }
   };
-  const saveException = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setSaving(true);
-    try {
-      const input: FiscalExceptionInput = {
-        frameTaxId: exceptionDraft.frameTaxId,
-        overrideField: requiredText(exceptionDraft.overrideField),
-        overrideValue:
-          exceptionDraft.overrideValue === null ||
-          exceptionDraft.overrideValue === undefined ||
-          String(exceptionDraft.overrideValue) === ""
-            ? null
-            : toNumber(exceptionDraft.overrideValue),
-        priority: toNumber(exceptionDraft.priority),
-        overrideLegalBasis: requiredText(exceptionDraft.overrideLegalBasis),
-        dateStart: exceptionDraft.dateStart,
-        dateEnd: cleanText(exceptionDraft.dateEnd),
-      };
-      const selectedId = selected.exceptions;
-      const response = selectedId
-        ? await api.updateFiscalException(selectedId, input)
-        : await api.createFiscalException(input);
-      setExceptions(
-        sortByNumericId(
-          selectedId
-            ? exceptions.map((item) =>
-                item.id === selectedId ? response.data : item,
-              )
-            : [...exceptions, response.data],
-        ),
-      );
-      selectException(response.data);
-      setStatus({
-        kind: "ok",
-        text: selectedId
-          ? "Fiscal exception updated."
-          : "Fiscal exception created.",
-      });
-    } catch (error) {
-      onRequestError(
-        "Could not save fiscal exception",
-        error,
-        "Could not save fiscal exception.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const deleteCurrent = async () => {
     const selectedId = selected[tab];
     if (
@@ -485,6 +456,10 @@ export function TaxEngineEditor({
       return;
     setSaving(true);
     try {
+      if (tab === "policies") {
+        await api.deleteFiscalPolicySet(selectedId);
+        setPolicies(policies.filter((item) => item.id !== selectedId));
+      }
       if (tab === "rules") {
         await api.deleteTaxRule(selectedId);
         setRules(rules.filter((item) => item.id !== selectedId));
@@ -496,10 +471,6 @@ export function TaxEngineEditor({
       if (tab === "frameTaxes") {
         await api.deleteFiscalFrameTax(selectedId);
         setFrameTaxes(frameTaxes.filter((item) => item.id !== selectedId));
-      }
-      if (tab === "exceptions") {
-        await api.deleteFiscalException(selectedId);
-        setExceptions(exceptions.filter((item) => item.id !== selectedId));
       }
       resetEditors();
       setStatus({ kind: "ok", text: active.title + " deleted." });
@@ -515,27 +486,24 @@ export function TaxEngineEditor({
   };
 
   const rows =
-    tab === "rules"
+    tab === "policies"
+      ? filterRows(policyRows(policies), search.policies)
+      : tab === "rules"
       ? filterRows(ruleRows(rules), search.rules)
       : tab === "frames"
         ? filterRows(frameRows(frames), search.frames)
-        : tab === "frameTaxes"
-          ? filterRows(
-              frameTaxRows(frameTaxes, frameById, ruleById),
-              search.frameTaxes,
-            )
-          : filterRows(
-              exceptionRows(exceptions, frameTaxById),
-              search.exceptions,
-            );
+        : filterRows(
+            frameTaxRows(frameTaxes, frameById, ruleById),
+            search.frameTaxes,
+          );
 
   return (
     <>
       <TaxEngineSummary
+        policies={policies.length}
         rules={rules.length}
         frames={frames.length}
         frameTaxes={frameTaxes.length}
-        exceptions={exceptions.length}
         onRefresh={() => void load()}
       />
       <Status status={status} />
@@ -547,29 +515,39 @@ export function TaxEngineEditor({
         rows={rows}
         selectedId={selected[tab]}
         onSelect={(id) => {
+          if (tab === "policies")
+            selectPolicy(policies.find((item) => item.id === id)!);
           if (tab === "rules")
             selectRule(rules.find((item) => item.id === id)!);
           if (tab === "frames")
             selectFrame(frames.find((item) => item.id === id)!);
           if (tab === "frameTaxes")
             selectFrameTax(frameTaxes.find((item) => item.id === id)!);
-          if (tab === "exceptions")
-            selectException(exceptions.find((item) => item.id === id)!);
         }}
       >
-        {tab === "rules" ? (
+        {tab === "policies" ? (
+          <PolicySetForm
+            draft={policyDraft}
+            selectedId={selected.policies}
+            saving={saving}
+            onDraft={setPolicyDraft}
+            onSubmit={savePolicy}
+            onNew={() => {
+              setSelected((current) => ({ ...current, policies: null }));
+              setPolicyDraft(blankPolicy());
+            }}
+            onDelete={deleteCurrent}
+          />
+        ) : tab === "rules" ? (
           <RuleForm
             draft={ruleDraft}
-            parametersText={ruleParametersText}
             selectedId={selected.rules}
             saving={saving}
             onDraft={setRuleDraft}
-            onParametersText={setRuleParametersText}
             onSubmit={saveRule}
             onNew={() => {
               setSelected((current) => ({ ...current, rules: null }));
               setRuleDraft(blankRule());
-              setRuleParametersText("{}");
             }}
             onDelete={deleteCurrent}
           />
@@ -580,6 +558,7 @@ export function TaxEngineEditor({
             selectedId={selected.frames}
             saving={saving}
             dictionaries={dictionaries}
+            policySets={policies}
             onDraft={setFrameDraft}
             onSubmit={saveFrame}
             onRequestError={onRequestError}
@@ -589,7 +568,7 @@ export function TaxEngineEditor({
             }}
             onDelete={deleteCurrent}
           />
-        ) : tab === "frameTaxes" ? (
+        ) : (
           <FrameTaxForm
             draft={frameTaxDraft}
             selectedId={selected.frameTaxes}
@@ -605,20 +584,6 @@ export function TaxEngineEditor({
             }}
             onDelete={deleteCurrent}
           />
-        ) : (
-          <ExceptionForm
-            draft={exceptionDraft}
-            selectedId={selected.exceptions}
-            saving={saving}
-            frameTaxes={frameTaxes}
-            onDraft={setExceptionDraft}
-            onSubmit={saveException}
-            onNew={() => {
-              setSelected((current) => ({ ...current, exceptions: null }));
-              setExceptionDraft(blankException());
-            }}
-            onDelete={deleteCurrent}
-          />
         )}
       </TaxEngineWorkspace>
     </>
@@ -628,6 +593,9 @@ export function TaxEngineEditor({
 function normalizeFrame(frame: FiscalFrameInput): FiscalFrameInput {
   return {
     ...frame,
+    policySetId: requiredText(frame.policySetId),
+    priority: toNumber(frame.priority),
+    buyerType: cleanText(frame.buyerType) as FiscalFrameInput["buyerType"],
     version: requiredText(frame.version),
     originCode: requiredText(frame.originCode),
     countryId: requiredText(frame.countryId),
@@ -637,6 +605,7 @@ function normalizeFrame(frame: FiscalFrameInput): FiscalFrameInput {
     enterpriseType: cleanText(frame.enterpriseType),
     taxRegime: cleanText(frame.taxRegime),
     fiscalNCMId: cleanText(frame.fiscalNCMId),
+    fiscalNBSId: cleanText(frame.fiscalNBSId),
     fiscalCESTId: cleanText(frame.fiscalCESTId),
     cstIcms: cleanText(frame.cstIcms),
     fiscalCFOPId: cleanText(frame.fiscalCFOPId),
@@ -647,6 +616,13 @@ function normalizeFrame(frame: FiscalFrameInput): FiscalFrameInput {
     fiscalClassTribId: cleanText(frame.fiscalClassTribId),
     dateEnd: cleanText(frame.dateEnd),
   };
+}
+function policyRows(items: FiscalPolicySet[]): Row[] {
+  return items.map((item) => ({
+    id: item.id,
+    primary: item.code + " v" + item.version + " - " + item.name,
+    secondary: [item.status, item.dateStart, item.dateEnd].filter(Boolean).join(" / "),
+  }));
 }
 function sortFrames(items: FiscalFrame[]): FiscalFrame[] {
   return [...items].sort(
@@ -731,25 +707,6 @@ function frameTaxRows(
       item.phase,
     ]
       .filter(Boolean)
-      .join(" / "),
-  }));
-}
-function exceptionRows(
-  items: FiscalException[],
-  frameTaxById: Map<string, FiscalFrameTax>,
-): Row[] {
-  return items.map((item) => ({
-    id: item.id,
-    primary: "#" + item.numericId + " " + item.overrideField,
-    secondary: [
-      frameTaxById.get(item.frameTaxId)
-        ? frameTaxLabel(frameTaxById.get(item.frameTaxId)!)
-        : item.frameTaxId,
-      item.overrideValue,
-      item.overrideLegalBasis,
-      item.dateStart,
-    ]
-      .filter((value) => value !== null && value !== undefined && value !== "")
       .join(" / "),
   }));
 }

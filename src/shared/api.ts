@@ -29,10 +29,10 @@ import type {
   FiscalIPIFrameInput,
   FiscalISSQNFrame,
   FiscalISSQNFrameInput,
-  FiscalException,
-  FiscalExceptionInput,
   FiscalFrame,
   FiscalFrameInput,
+  FiscalPolicySet,
+  FiscalPolicySetInput,
   FiscalFrameTax,
   FiscalFrameTaxInput,
   ListResponse,
@@ -970,6 +970,18 @@ export class ApiClient {
       this.listPath("/api/fiscal-frames", params),
     );
   }
+  listFiscalPolicySets(params: { limit?: number; offset?: number } = {}): Promise<ListResponse<FiscalPolicySet>> {
+    return this.request<ListResponse<FiscalPolicySet>>(this.listPath("/api/fiscal-policy-sets", params));
+  }
+  createFiscalPolicySet(input: FiscalPolicySetInput): Promise<DataResponse<FiscalPolicySet>> {
+    return this.request<DataResponse<FiscalPolicySet>>("/api/fiscal-policy-sets", { method: "POST", body: JSON.stringify(input) });
+  }
+  updateFiscalPolicySet(id: string, input: Partial<FiscalPolicySetInput>): Promise<DataResponse<FiscalPolicySet>> {
+    return this.request<DataResponse<FiscalPolicySet>>("/api/fiscal-policy-sets/" + id, { method: "PATCH", body: JSON.stringify(input) });
+  }
+  deleteFiscalPolicySet(id: string): Promise<void> {
+    return this.request<void>("/api/fiscal-policy-sets/" + id, { method: "DELETE" });
+  }
   createFiscalFrame(
     input: FiscalFrameInput,
   ): Promise<DataResponse<FiscalFrame>> {
@@ -1017,36 +1029,6 @@ export class ApiClient {
   }
   deleteFiscalFrameTax(id: string): Promise<void> {
     return this.request<void>("/api/fiscal-frame-taxes/" + id, {
-      method: "DELETE",
-    });
-  }
-
-  listFiscalExceptions(
-    params: { limit?: number; offset?: number } = {},
-  ): Promise<ListResponse<FiscalException>> {
-    return this.request<ListResponse<FiscalException>>(
-      this.listPath("/api/fiscal-exceptions", params),
-    );
-  }
-  createFiscalException(
-    input: FiscalExceptionInput,
-  ): Promise<DataResponse<FiscalException>> {
-    return this.request<DataResponse<FiscalException>>(
-      "/api/fiscal-exceptions",
-      { method: "POST", body: JSON.stringify(input) },
-    );
-  }
-  updateFiscalException(
-    id: string,
-    input: Partial<FiscalExceptionInput>,
-  ): Promise<DataResponse<FiscalException>> {
-    return this.request<DataResponse<FiscalException>>(
-      "/api/fiscal-exceptions/" + id,
-      { method: "PATCH", body: JSON.stringify(input) },
-    );
-  }
-  deleteFiscalException(id: string): Promise<void> {
-    return this.request<void>("/api/fiscal-exceptions/" + id, {
       method: "DELETE",
     });
   }

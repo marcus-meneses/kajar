@@ -14,11 +14,11 @@ import {
   type FiscalCEST,
   type FiscalCFOP,
   type FiscalClassTrib,
-  type FiscalExceptionInput,
   type FiscalFrame,
   type FiscalFrameInput,
   type FiscalFrameTax,
   type FiscalFrameTaxInput,
+  type FiscalPolicySet,
   type TaxRule,
   cleanText,
   fetchAllPages,
@@ -102,6 +102,16 @@ function fiscalCategoryLabel(
     ? item.code + " - " + item.description
     : fallback
       ? "Selected fiscal NCM"
+      : "None";
+}
+function fiscalNbsLabel(
+  item: FiscalCategory | undefined,
+  fallback: string | null | undefined,
+): string {
+  return item
+    ? item.code + " - " + item.description
+    : fallback
+      ? "Selected fiscal NBS"
       : "None";
 }
 function cfopLabel(
@@ -240,6 +250,7 @@ export function FrameForm({
   selectedId,
   saving,
   dictionaries,
+  policySets,
   onDraft,
   onSubmit,
   onRequestError,
@@ -251,6 +262,7 @@ export function FrameForm({
   selectedId: string | null;
   saving: boolean;
   dictionaries: DictionaryCollection;
+  policySets: FiscalPolicySet[];
   onDraft: (draft: FiscalFrameInput) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   onRequestError: RequestErrorHandler;
@@ -266,6 +278,7 @@ export function FrameForm({
   );
   const [cityById, setCityById] = useState(new Map<string, City>());
   const [ncmById, setNcmById] = useState(new Map<string, FiscalCategory>());
+  const [nbsById, setNbsById] = useState(new Map<string, FiscalCategory>());
   const [cestById, setCestById] = useState(new Map<string, FiscalCEST>());
   const [cfopById, setCfopById] = useState(new Map<string, FiscalCFOP>());
   const [classTribById, setClassTribById] = useState(
@@ -556,6 +569,24 @@ export function FrameForm({
       },
       (id) => onDraft({ ...draft, fiscalCFOPId: id }),
     );
+  const openNbsPicker = () =>
+    void chooseRows(
+      "Fiscal NBS",
+      draft.fiscalNBSId ?? null,
+      true,
+      async () => {
+        const records = sortFiscalCategories(
+          await fetchAllPages((params) => api.listFiscalNBS(params)),
+        );
+        setNbsById((current) => mergeById(current, records));
+        return records.map((item) => ({
+          id: item.id,
+          primary: item.code,
+          secondary: item.description,
+        }));
+      },
+      (id) => onDraft({ ...draft, fiscalNBSId: id }),
+    );
 
   return (
     <form className="form-grid" onSubmit={onSubmit}>
@@ -563,6 +594,71 @@ export function FrameForm({
         title={selectedId ? "Edit fiscal frame" : "New fiscal frame"}
         id={selectedId}
       />
+      <div className="tax-frame-row tax-frame-row-2">
+        <label>
+          Policy set
+          <select
+            value={draft.policySetId}
+            onChange={(event) =>
+              onDraft({ ...draft, policySetId: event.target.value })
+            }
+            required
+          >
+            <option value="">Select a policy set</option>
+            {policySets.map((policy) => (
+              <option key={policy.id} value={policy.id}>
+                {policy.code} v{policy.version} - {policy.name} ({policy.status})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Priority
+          <input
+            type="number"
+            step="1"
+            value={draft.priority}
+            onChange={(event) =>
+              onDraft({ ...draft, priority: Number(event.target.value) })
+            }
+            required
+          />
+        </label>
+      </div>
+      <div className="tax-frame-row tax-frame-row-2">
+        <label>
+          Operation
+          <select
+            value={draft.operation}
+            onChange={(event) =>
+              onDraft({
+                ...draft,
+                operation: event.target.value as FiscalFrameInput["operation"],
+              })
+            }
+          >
+            <option>Sale</option>
+            <option>Service</option>
+          </select>
+        </label>
+        <label>
+          Buyer type
+          <select
+            value={draft.buyerType ?? ""}
+            onChange={(event) =>
+              onDraft({
+                ...draft,
+                buyerType: (event.target.value || null) as FiscalFrameInput["buyerType"],
+              })
+            }
+          >
+            <option value="">Any</option>
+            <option>Consumer</option>
+            <option>Taxpayer</option>
+            <option>Government</option>
+          </select>
+        </label>
+      </div>
       <label>
         Version
         <input
@@ -620,6 +716,17 @@ export function FrameForm({
             <option>Service</option>
           </select>
         </label>
+      </div>
+      <div className="tax-frame-row tax-frame-row-2">
+        <ValuePicker
+          label="Fiscal NBS"
+          value={fiscalNbsLabel(
+            nbsById.get(draft.fiscalNBSId ?? ""),
+            draft.fiscalNBSId,
+          )}
+          onChoose={openNbsPicker}
+          onClear={() => onDraft({ ...draft, fiscalNBSId: null })}
+        />
       </div>
       <div className="tax-frame-row tax-frame-row-3">
         <ValuePicker

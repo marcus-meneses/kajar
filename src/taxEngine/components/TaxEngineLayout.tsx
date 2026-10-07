@@ -2,7 +2,11 @@ import React from "react";
 import { RefreshCw } from "lucide-react";
 import { Metric, RecordList } from "../../shared";
 
-export type TaxEngineTab = "rules" | "frames" | "frameTaxes" | "exceptions";
+export type TaxEngineTab =
+  | "policies"
+  | "rules"
+  | "frames"
+  | "frameTaxes";
 export type TaxEngineTabConfig = {
   key: TaxEngineTab;
   title: string;
@@ -13,23 +17,23 @@ export type TaxEngineRow = { id: string; primary: string; secondary: string };
 
 export function TaxEngineSummary({
   rules,
+  policies,
   frames,
   frameTaxes,
-  exceptions,
   onRefresh,
 }: {
   rules: number;
+  policies: number;
   frames: number;
   frameTaxes: number;
-  exceptions: number;
   onRefresh: () => void;
 }) {
   return (
     <section className="summary" aria-label="Tax engine summary">
       <Metric value={rules} label="Rules" />
+      <Metric value={policies} label="Policy sets" />
       <Metric value={frames} label="Frames" />
       <Metric value={frameTaxes} label="Frame taxes" />
-      <Metric value={exceptions} label="Exceptions" />
       <button
         className="metric-action secondary"
         type="button"
